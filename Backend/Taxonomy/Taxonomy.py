@@ -9,13 +9,14 @@ from collections import defaultdict, Counter
 import pandas as pd
 import spacy 
 from sklearn.metrics import silhouette_score, davies_bouldin_score
-nltk.download('stopwords')
-nltk.download('punkt')
-nltk.download('punkt_tab')
-spacy.load("en_core_web_sm")
+
 
 class Taxonomy:
     def __init__(self, file_path="./Backend/Taxonomy/QnApairs_updated.csv"):
+        nltk.download('stopwords')
+        nltk.download('punkt')
+        nltk.download('punkt_tab')
+        spacy.load("en_core_web_sm")
         self.nlp = spacy.load("en_core_web_sm")
         self.model = BertModel.from_pretrained("bert-base-uncased")
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -84,7 +85,7 @@ class Taxonomy:
 
     def assign_category(self, text):
         """Assigns a category to a given text based on cosine similarity with predefined cybersecurity categories."""
-        text_embedding = self.text_embeddings[text]
+        text_embedding = normalize(self.text_embeddings[text])
         category_similarities = {
             category: np.mean([cosine_similarity(text_embedding, self.get_bert_embedding(sub_cat)).flatten()[0] 
                                for sub_cat in sub_cats])
@@ -94,7 +95,7 @@ class Taxonomy:
     def assign_sub_category(self, category, text):
         """Assigns a subcategory to a given category and text based on cosine similarity with predefined cybersecurity categories."""
         sub_categories = self.CYBERSEC_CATEGORIES[category]
-        text_embedding = self.text_embeddings[text]
+        text_embedding = normalize(self.text_embeddings[text])
 
         category_similarities = {
             sub_cat: cosine_similarity(text_embedding, self.get_bert_embedding(sub_cat)).flatten()[0]  
@@ -113,7 +114,7 @@ class Taxonomy:
         And then each clusters are divided into further sub-clusters. Each cluster is then assigned with a category name and sub-category name.
         Returns a dictionary for the taxonomy.
         """
-        
+        print("----Creating Taxonomy-----\n")
         # Compute BERT embeddings for semantic preservation
         self.text_embeddings = {text: self.get_bert_embedding(text) for text in self.qna_pairs.values()}
         embeddings = np.vstack(list(self.text_embeddings.values()))
@@ -146,11 +147,11 @@ class Taxonomy:
             category_name = self.generate_category_name(qna_list) if qna_list else f"Category {label}"
             self.top_nodes[label] = Node(category_name, parent=self.taxonomy_root)
             label_to_category_name[label] = category_name
-        
+        print("----First Level Nodes Categorization Successful-----\n")
         # Perform sub-clustering within each top-level category
         self.sub_silhouette_scores = []
         self.sub_davies_bouldin_scores = []
-        
+        print("----Starting Second Level Nodes Categorization -----\n")
         for label, qna_list in self.category_map.items():
             if len(qna_list) < 2:
                 continue  
@@ -182,18 +183,18 @@ class Taxonomy:
                 self.sub_nodes_map[label][sub_category_name].extend(qna_list)
         
         # Construct the final taxonomy dictionary
-        taxonomy_dict = {}
+        self.taxonomy_dict = {}
 
         for label in self.top_nodes:
             category_name = self.top_nodes[label].name
-            if category_name not in taxonomy_dict:
-                taxonomy_dict[category_name] = {}
+            if category_name not in self.taxonomy_dict:
+                self.taxonomy_dict[category_name] = {}
             if label in self.sub_nodes_map:
                 for sub_category_name, sub_qna_list in self.sub_nodes_map[label].items():
-                    if sub_category_name not in taxonomy_dict[category_name]:
-                        taxonomy_dict[category_name][sub_category_name] = []
-                    taxonomy_dict[category_name][sub_category_name].extend([q_id for q_id, _ in sub_qna_list])
-        return taxonomy_dict
+                    if sub_category_name not in self.taxonomy_dict[category_name]:
+                        self.taxonomy_dict[category_name][sub_category_name] = []
+                    self.taxonomy_dict[category_name][sub_category_name].extend([q_id for q_id, _ in sub_qna_list])
+        return self.taxonomy_dict
 
 
     def evaluate_taxonomy(self):
@@ -241,7 +242,7 @@ class Taxonomy:
             category_similarities = {}
             for label, qna_list in self.category_map.items():
                 category_embeddings = np.vstack([self.text_embeddings[text] for _, text in qna_list])
-                avg_similarity = np.mean(cosine_similarity(new_embedding, category_embeddings))
+                avg_similarity = np.mean(cosine_similarity(new_embedding.reshape(1, -1), normalize(category_embeddings)))
                 category_similarities[label] = avg_similarity
 
             best_category_label = max(category_similarities, key=category_similarities.get)
@@ -253,7 +254,7 @@ class Taxonomy:
 
                 for sub_category_name, sub_qna_list in self.sub_nodes_map[best_category_label].items():
                     sub_category_embeddings = np.vstack([self.text_embeddings[text] for _, text in sub_qna_list])
-                    avg_similarity = np.mean(cosine_similarity(new_embedding.reshape(1, -1), sub_category_embeddings))
+                    avg_similarity = np.mean(cosine_similarity(new_embedding.reshape(1, -1), normalize(sub_category_embeddings)))
                     sub_category_similarities[sub_category_name] = avg_similarity
 
                 if sub_category_similarities:

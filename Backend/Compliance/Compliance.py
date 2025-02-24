@@ -62,7 +62,7 @@ class Complaince_RAG:
             """
             extracted_text = self._extract_text_from_pdf(pdf_path)
             chunks = self._chunk_text(extracted_text)
-
+            print("----Storing pdf chunks in Database--\n")
             # Embed and store chunks in Pinecone
             for i, chunk in enumerate(chunks):
                 embedding = self.model.encode(chunk).tolist()  # Convert embedding to list
