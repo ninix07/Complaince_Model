@@ -2,7 +2,9 @@ from flask import Flask, jsonify,request
 from Compliance.Compliance import Complaince_RAG
 from Taxonomy.Taxonomy import Taxonomy
 from Neo4j import ConnectNeo4j
+from flask_cors import CORS
 app = Flask(__name__)
+CORS(app)
 try:
     db= ConnectNeo4j()
 except Exception as err:
@@ -17,7 +19,8 @@ def home():
 @app.route('/api/createTaxonomy',methods=["POST"])
 def createTaxonomy():
     f = request.files.get('file')
-
+    if f==None:
+        return jsonify({"error": "No file attacheed."}), 500
     try:
         taxonomy.create_taxonomy(f)  
         return jsonify({"message": "Taxonomy created successfully"}), 200
@@ -28,7 +31,8 @@ def createTaxonomy():
 @app.route('/api/getTaxonomy')
 def get_taxonomy():
     print("API Hit \n")
-    return jsonify(taxonomy.taxonomy_dict)
+    print(taxonomy.taxonomy_dict)
+    return jsonify({"Data":taxonomy.taxonomy_dict})
 
 @app.route('/api/predictCategory',methods=["POST"])
 def get_category():
@@ -37,14 +41,18 @@ def get_category():
         return jsonify({"error": "Missing 'question' in request body"}), 400
     question = data["question"]
     q_id= data["q_id"]
-    category,sub_category = taxonomy.predict_category( q_id, question)
-    response = {"Category": category, "Sub-Category": sub_category}
+    prediction= taxonomy.predict_category( q_id, question)
+    if prediction=="error":
+        return jsonify({"error": "Taxonomy has not been created yet. Run create_taxonomy() first."}), 400
+    
+    response = {"Category": prediction[0], "Sub_Category": prediction[1]}
     return jsonify(response), 200 
 
 @app.route('/api/getComplaince',methods=["POST"])
 def get_Complaince():
-    data = request.get_json()  
-    if not data or "question" not in data or "q_id" not in data:
+    data = request.get_json() 
+    print(data)
+    if not data or "question" not in data or "q_id" not in data or not data["question"] or not data["q_id"]:
         return jsonify({"error": "Missing 'question or q_id' in request body"}), 400
     question = data["question"]
     q_id= data["q_id"]
@@ -67,4 +75,4 @@ def count_Compliance():
 
 
 if __name__ == '__main__':
-    app.run(debug=False,port=8080)
+    app.run(debug=True,port=8080)

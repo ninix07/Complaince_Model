@@ -1,5 +1,4 @@
 import numpy as np
-import nltk
 from transformers import BertTokenizer, BertModel
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import normalize
@@ -8,13 +7,11 @@ from collections import defaultdict
 import pandas as pd
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 import torch
+from flask import jsonify
 
 class Taxonomy:
     def __init__(self, db, file_path="./Backend/Taxonomy/data.csv"):
         self.db=db
-        nltk.download('stopwords')
-        nltk.download('punkt')
-        nltk.download('punkt_tab')
         self.model = BertModel.from_pretrained("bert-base-uncased")
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
         # temporary before database setup
@@ -68,7 +65,7 @@ class Taxonomy:
     def _remove_all_db(self):
         try:
             query = """
-                Match(n) Delete(n)
+                Match(n) Detach Delete(n)
               """
             self.db.query(query)
             
@@ -328,8 +325,7 @@ class Taxonomy:
             Predicts the most suitable category and sub-category for a given QnA pair.
             """
             if not self.clustering:
-                print("Taxonomy has not been created yet. Run create_taxonomy() first.")
-                return "Uncategorized", "Uncategorized"
+                 return "error"
             self.new_qna_count += 1 
             if self.new_qna_count >= 100 :
                 print("Threshold reached. Rebuilding taxonomy...")
@@ -344,7 +340,7 @@ class Taxonomy:
             # Find the best matching category
             category_similarities = {}
             for label, embedding in self.category_map.items():
-                avg_similarity = np.mean(cosine_similarity(new_embedding, embedding))
+                avg_similarity = cosine_similarity(new_embedding, embedding[0][1].reshape(1,-1))
                 category_similarities[label] = avg_similarity
             if not category_similarities:
                 return "Uncategorized", "Uncategorized"
@@ -364,7 +360,7 @@ class Taxonomy:
             if best_category_label in self.sub_nodes_map:
                 sub_category_similarities = {}
                 for sub_category_label, sub_embedding in self.sub_nodes_map[best_category_label].items():
-                    avg_similarity = np.mean(cosine_similarity(new_embedding, sub_embedding))
+                    avg_similarity = cosine_similarity(new_embedding, sub_embedding[0][1].reshape(1,-1))
                     sub_category_similarities[sub_category_label] = avg_similarity
                
                 best_sub_category_label = max(sub_category_similarities, key=sub_category_similarities.get)
