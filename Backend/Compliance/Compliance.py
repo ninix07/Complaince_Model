@@ -15,8 +15,8 @@ TOGETHER_AI_KEY = os.getenv("TOGETHER_AI_KEY")
 
 class Complaince_RAG:
 
-    def __init__(self):
-        
+    def __init__(self,db):
+        self.db=db
         self.Index_NAME= "compliance-embeddings" #index name for pinecone db
         self.pc= Pinecone(api_key= PINECONE_API_KEY)
         if self.Index_NAME not in self.pc.list_indexes().names():
@@ -83,33 +83,67 @@ class Complaince_RAG:
         retrieved_chunks = [(match["metadata"]["text"], match["metadata"]["compliance"]) for match in results["matches"]]
         return retrieved_chunks
 
-    def classify_with_rag(self,qna_pair, top_k=3):
+    def classify_with_rag(self,q_id,qna_pair, top_k=3):
         """Uses retrieved compliance chunks in a RAG pipeline to classify QnA."""
         top_chunks = self._retrieve_top_k(qna_pair, k=top_k)
         print("Succesfully Fetched chunk \n")
-
+       
         # Format retrieved context into label and document text
         context_text = "\n".join([f"- {label}: {chunk}" for chunk, label in top_chunks])
 
 
+       
         response = self.client.chat.completions.create(
-            model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
                 messages=[
                     {"role": "system", "content": "You are an AI compliance expert."},
                     {"role": "user", "content": f"""
-                    Given the following compliance standards content:
+                        Given the following compliance standards content:
 
-                    {context_text}
+                        {context_text}
 
-                    Classify the following question into one of these compliance standards based on the complaince standard content.
+                        Classify the following question into one of these compliance standards based on the compliance standard content.
 
-                    Only return the compliance name.
+                        Only return the compliance name.
 
-                    Q: {qna_pair}
+                        Q: {qna_pair}
                     """}
                 ]
             )
-        return response.choices[0].message.content
+
+        # Validate Response
+        if not response or not response.choices:
+            return {"error": "No response from AI model"}, 500
+
+        compliance = response.choices[0].message.content.strip()
+
+        # Handle Empty or Unexpected Response
+        if not compliance:
+            return {"error": "Model did not return a compliance category"}, 400
+
+
+        try:
+            query = """
+                MERGE (q:QnAPair {id: $qna_id})
+                MERGE (sc:Compliance {name: $compliance})
+                MERGE (q)-[:FALLS_UNDER]->(sc)
+                RETURN q, sc
+            """
+            result = self.db.query(query, parameters={"qna_id": q_id, "compliance": compliance})
+        except Exception as e:
+            print(f"Error linking QnA Pair to SubCategory: {e}")
+        return compliance
+    def count_each_compliance(self):
+        try:
+            query = """
+                MATCH (q:QnAPair)-[:FALLS_UNDER]->(sc:Compliance)
+                RETURN sc.name AS compliance, COUNT(q) AS total_questions
+                ORDER BY total_questions DESC
+            """
+            result = self.db.query(query)
+            return [{ "compliance": record["compliance"], "total_questions": record["total_questions"]} for record in result]
+        except Exception as e:
+            print(f"Error linking QnA Pair to SubCategory: {e}")
 
 
 if __name__ =="__main__":
