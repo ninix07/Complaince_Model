@@ -1,14 +1,27 @@
 from flask import Flask, jsonify,request
 from Compliance.Compliance import Complaince_RAG
 from Taxonomy.Taxonomy import Taxonomy
-
+from Neo4j import ConnectNeo4j
 app = Flask(__name__)
-taxonomy= Taxonomy()
-taxonomy.create_taxonomy()
+
+db= ConnectNeo4j()
+taxonomy= Taxonomy(db)
 complaince= Complaince_RAG()
+
 @app.route('/')
 def home():
     return "<h1>Flask Application Running</p>"
+
+@app.route('/api/createTaxonomy',methods=["POST"])
+def createTaxonomy():
+    f = request.files.get('file')
+
+    try:
+        taxonomy.create_taxonomy(f)  
+        return jsonify({"message": "Taxonomy created successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 
 @app.route('/api/getTaxonomy')
 def get_taxonomy():
@@ -40,4 +53,4 @@ def get_Complaince():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True,port=8080)
