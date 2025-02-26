@@ -10,7 +10,8 @@ from sklearn.metrics import silhouette_score, davies_bouldin_score
 import torch
 
 class Taxonomy:
-    def __init__(self, file_path="./Backend/Taxonomy/QnApairs_updated.csv"):
+    def __init__(self, db, file_path="./Backend/Taxonomy/data.csv"):
+        self.db=db
         nltk.download('stopwords')
         nltk.download('punkt')
         nltk.download('punkt_tab')
@@ -47,33 +48,80 @@ class Taxonomy:
         self.new_qna_count =0 
         self.text_embeddings={}
         # Read dataset
-        self.qna_pairs= self._read_data()
+        
         self.silhouette_scores=[]
         self.davies_bouldin_scores=[]
         self.sub_silhouette_scores=[]
         self.sub_davies_bouldin_scores=[]
 
-    def _read_data(self):
+    def _read_data(self,file_path=None):
         """
         From the given path/database read the data and then store it as necessary.
         """
+        qna_pairs = {}
+        if file_path:
+            self.file_path=file_path
         df = pd.read_csv(self.file_path)
         df["Combined Text"] = df["Question Text"].fillna("") + " " + df["Answer"].fillna("") + " " + df["Notes/Comment"].fillna("")
         qna_pairs = df.set_index("Original ID")["Combined Text"].to_dict()
         return qna_pairs
-
-    
+    def _remove_all_db(self):
+        try:
+            query = """
+                Match(n) Delete(n)
+              """
+            self.db.query(query)
+            
+        except Exception as e:
+            print(f"Error Deteced while deleting existing relationship: {e}")
+    def _create_category_db(self, category_name):
+            try:
+                query = """
+                    MERGE (c:Category {name: $category_name})
+                    RETURN c
+                """
+                result = self.db.query(query, parameters={"category_name": category_name})
+                return result
+            except Exception as e:
+                print(f"Error creating category: {e}")
+    def _create_sub_category_db(self, category_name,sub_category):
+            
+            try:
+                query = """
+                        MERGE (c:Category {name: $category_name})
+                        MERGE (sc:SubCategory {name: $sub_category})
+                        MERGE (sc)-[:BELONGS_TO]->(c)
+                        RETURN sc, c
+                    """
+                result = self.db.query(query, parameters={"sub_category": sub_category, "category_name": category_name})
+                return result
+            except Exception as e:
+                print(f"Error creating category: {e}")
+    def _create_qna_sub_category_db(self, sub_category, qid):
+        try:
+            query = """
+                MERGE (q:QnAPair {id: $qna_id})
+                MERGE (sc:SubCategory {name: $sub_category})
+                MERGE (q)-[:CATEGORIZES_TO]->(sc)
+                RETURN q, sc
+            """
+            result = self.db.query(query, parameters={"qna_id": qid, "sub_category": sub_category})
+            return result
+        except Exception as e:
+            print(f"Error linking QnA Pair to SubCategory: {e}")
     def generate_category_name(self, embedding):
         """Generates category name using the most frequent assigned category."""
         # categories = [self.assign_category(qna) for _, qna in qna_list[:2]]
-        categories = self.assign_category(embedding[0].reshape(1, -1))
+        first_embedding = embedding[0][1]
+        categories = self.assign_category(first_embedding.reshape(1, -1))
         # return Counter(categories).most_common(1)[0][0] 
         return categories
     
     def generate_sub_category_name(self, category_name, embedding):
         """Generates sub category name using the most frequent assigned sub category."""
         # categories = [self.assign_sub_category(category_name,qna) for _, qna in qna_list[0]]
-        categories = self.assign_sub_category(category_name,embedding[0].reshape(1, -1))
+        first_embedding = embedding[0][1]
+        categories = self.assign_sub_category(category_name,first_embedding.reshape(1, -1).reshape(1, -1))
         # return Counter(categories).most_common(1)[0][0] 
         return categories
 
@@ -114,13 +162,14 @@ class Taxonomy:
 
         return max(category_similarities, key=category_similarities.get) 
 
-    def create_taxonomy(self):
+    def create_taxonomy(self,f):
         """
         Creates a taxonomy based on clustering methods. Firstly, embeddings are generated and a top-level clustering is formed. 
         Then, each cluster is divided into further sub-clusters. Each cluster is assigned a category name and sub-category name.
         Returns a dictionary representing the taxonomy.
         """
-        
+        self.qna_pairs= self._read_data(f)
+        self._remove_all_db()
         self.category_map = defaultdict(list)
         self.label_to_category_name = {}
         self.sub_nodes_map = defaultdict(lambda: defaultdict(list))
@@ -128,9 +177,9 @@ class Taxonomy:
 
         print("----Creating Taxonomy-----\n")
         
-        # Compute BERT embeddings if not already computed
+        qna_ids, qna_pairs = zip(*self.qna_pairs.items()) 
         if not self.text_embeddings:
-            self.text_embeddings = self.get_bert_embedding_batched(list(self.qna_pairs.values()))
+            self.text_embeddings = self.get_bert_embedding_batched(list(qna_pairs))
         embeddings = np.vstack(list(self.text_embeddings.values()))
         embeddings = normalize(embeddings)
 
@@ -141,8 +190,8 @@ class Taxonomy:
         cluster_labels = self.clustering.fit_predict(embeddings)
 
 
-        for embedding, label in zip(embeddings, cluster_labels):
-            self.category_map[label].append(embedding)
+        for qna_id,embedding, label in zip(qna_ids,embeddings,cluster_labels):
+            self.category_map[label].append((qna_id,embedding))
 
 
         # Compute clustering scores
@@ -152,45 +201,44 @@ class Taxonomy:
             self.top_davies_bouldin = davies_bouldin_score(embeddings, cluster_labels)
         else:
             self.top_silhouette, self.top_davies_bouldin = None, None
-
+        
         # Assign category names to labels
-        for label, embedding in self.category_map.items():
-            category_name = self.generate_category_name(embedding) if embedding else f"Category {label}"
+        for label in self.category_map.keys():
+            category_name = self.generate_category_name(self.category_map[label]) if self.category_map[label] else f"Category {label}"
             self.label_to_category_name[label] = category_name
-        labels_to_delete=[]
-        for label, embedding in self.category_map.items():
-                if len(embedding) < 2:
+
+        for label,  embeddings in self.category_map.items():
+                if len(embeddings) < 2:
                   best_similarity = 0.0
                   best_label = None
-                  for other_label, other_embedding in self.category_map.items():
-                        if other_label == label:
+                  for other_label, other_embeddings in self.category_map.items():
+                    if len(other_embeddings) >1:
+                        if other_label == label or self.label_to_category_name[label] ==self.label_to_category_name[other_label]:
                             continue
+                          
+                            
                         # Compute similarity between the single-QnA and the first QnA in the other cluster
                         similarity = cosine_similarity(
-                            embedding[0].reshape(1, -1),
-                            other_embedding[0].reshape(1, -1)
+                            embeddings[0][1].reshape(1, -1),
+                            other_embeddings[0][1].reshape(1, -1)
                         ).flatten()[0]
 
                         if similarity > best_similarity:  # Keep track of the best match
                             best_similarity = similarity
                             best_label = other_label
-                        elif similarity > 0.5:
-                          self.category_map[other_label].extend(embedding)
-                          labels_to_delete.append(label)
+                        elif similarity > 0.6:
                           self.label_to_category_name[label] = self.label_to_category_name[other_label]
+                          best_label=None
                           break
 
                     # Merge into the best cluster if similarity is high enough
-                  if best_label and best_similarity < 0.5:
-                        self.category_map[best_label].extend(embedding)
+                  if best_label :
                         self.label_to_category_name[label] = self.label_to_category_name[other_label]
-                        labels_to_delete.append(label)  # Mark for deletion
-
-        # Remove merged clusters after iteration
-        for label in labels_to_delete:
-            del self.category_map[label]
+                        
         print("----First Level Nodes Categorization Successful-----\n")
 
+        for label, category_name in self.label_to_category_name.items():
+            self._create_category_db(category_name)
         # Perform sub-clustering within each top-level category
         self.sub_silhouette_scores = []
         self.sub_davies_bouldin_scores = []
@@ -198,30 +246,38 @@ class Taxonomy:
 
         for label, sub_embeddings in self.category_map.items():
             if len(sub_embeddings) < 2:
-
                 continue   
-            
+            embeddings=[embedding for _, embedding in sub_embeddings]
+            sub_qna_ids=[qid for qid,_ in sub_embeddings]
             sub_clustering = AgglomerativeClustering(distance_threshold=0.1, n_clusters=None, metric="cosine", linkage="average")
-            sub_cluster_labels = sub_clustering.fit_predict(sub_embeddings)
+            sub_cluster_labels = sub_clustering.fit_predict(embeddings)
 
             unique_sub_clusters = len(set(sub_cluster_labels))
             if 1 < unique_sub_clusters < len(sub_embeddings):
-                self.sub_silhouette_scores.append(silhouette_score(sub_embeddings, sub_cluster_labels, metric="cosine"))
-                self.sub_davies_bouldin_scores.append(davies_bouldin_score(sub_embeddings, sub_cluster_labels))
+                self.sub_silhouette_scores.append(silhouette_score(embeddings, sub_cluster_labels, metric="cosine"))
+                self.sub_davies_bouldin_scores.append(davies_bouldin_score(embeddings, sub_cluster_labels))
             
             
             sub_label_to_qnas = defaultdict(list)
-            for sub_embedding, sub_label in zip(sub_embeddings, sub_cluster_labels):
-                    sub_label_to_qnas[sub_label].append(sub_embedding)
+            for sub_qna_ids,sub_embedding, sub_label in zip(sub_qna_ids,embeddings, sub_cluster_labels):
+                    sub_label_to_qnas[sub_label].append((sub_qna_ids,sub_embedding))
                 
 
             # Generate sub-category names
             for sub_label, sub_embeddings in sub_label_to_qnas.items():
                 category_name = self.label_to_category_name[label]
-                sub_category_name = self.generate_sub_category_name(category_name, sub_embeddings)
-                self.sub_label_to_sub_category[label][sub_label] = sub_category_name
+                if sub_label not in self.sub_label_to_sub_category[label]:
+                    sub_category_name = self.generate_sub_category_name(category_name, sub_embeddings)
+                    self.sub_label_to_sub_category[label][sub_label] = sub_category_name
                 self.sub_nodes_map[label][sub_label] = sub_embeddings  
+            category_name = self.label_to_category_name[label]
+            for sub_label, sub_category_name in self.sub_label_to_sub_category[label].items():
+                self._create_sub_category_db(category_name,sub_category_name)
 
+            for sub_label, sub_embeddings in sub_label_to_qnas.items():
+                sub_category_name=self.sub_label_to_sub_category[label][sub_label] 
+                for q_id , _ in sub_embeddings:
+                    self._create_qna_sub_category_db( sub_category_name, q_id)
         print("----Subcategory Assignment Successful-----\n")
         # Construct the final taxonomy dictionary
         self.taxonomy_dict = {}
@@ -277,9 +333,11 @@ class Taxonomy:
             self.new_qna_count += 1 
             if self.new_qna_count >= 100 :
                 print("Threshold reached. Rebuilding taxonomy...")
+
                 self.create_taxonomy()
                 self.new_qna_count = 0 
             #Embed the new QnA pair
+            self.qna_pairs[new_q_id]=new_text
             new_embedding_un = self.get_bert_embedding(new_text)
             new_embedding = normalize(new_embedding_un.reshape(1, -1))
 
@@ -319,7 +377,7 @@ class Taxonomy:
             self.text_embeddings[new_text] = new_embedding_un
             self.qna_pairs[new_q_id]= new_text
             if best_category_label in self.sub_nodes_map:
-                self.sub_nodes_map[best_category_label][best_sub_category_label].append((new_q_id, new_text))
+                self.sub_nodes_map[best_category_label][best_sub_category_label].append(new_embedding)
                 best_category_name= self.label_to_category_name[best_category_label]
                 best_sub_category_name = self.sub_label_to_sub_category[best_category_label][best_sub_category_label]
                 return best_category_name, best_sub_category_name       
@@ -327,10 +385,3 @@ class Taxonomy:
             
 
    
-if __name__== "__main__":
-
-    tax= Taxonomy()
-    tax.create_taxonomy()
-    test_text = "What procedure should we follow when someone violates company policy?"
-    print(tax.predict_category(100.1,test_text))
-    print(tax.evaluate_taxonomy())
