@@ -7,6 +7,7 @@ from collections import defaultdict
 import pandas as pd
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 import torch
+from sklearn.decomposition import PCA
 class Taxonomy:
     def __init__(self, db, file_path="./Backend/Taxonomy/data.csv"):
         self.db=db
@@ -142,7 +143,7 @@ class Taxonomy:
     def assign_category(self, text_embedding):
         """Assigns a category to a given text based on cosine similarity with predefined cybersecurity categories."""
         category_similarities = {
-            category: np.max([cosine_similarity(text_embedding, self.get_bert_embedding(sub_cat)).flatten()[0] 
+            category: np.max([cosine_similarity(text_embedding, self.pca.transform(normalize(self.get_bert_embedding(sub_cat))).reshape(1,-1) )
                                for sub_cat in sub_cats])
             for category, sub_cats in self.CYBERSEC_CATEGORIES.items()
         }
@@ -151,7 +152,7 @@ class Taxonomy:
         """Assigns a subcategory to a given category and text based on cosine similarity with predefined cybersecurity categories."""
         sub_categories = self.CYBERSEC_CATEGORIES[category]
         category_similarities = {
-            sub_cat: cosine_similarity(text_embedding, self.get_bert_embedding(sub_cat)).flatten()[0]  
+            sub_cat: cosine_similarity(text_embedding, self.pca.transform(normalize(self.get_bert_embedding(sub_cat))).reshape(1,-1)  )
             for sub_cat in sub_categories  
         }
 
@@ -177,13 +178,14 @@ class Taxonomy:
             self.text_embeddings = self.get_bert_embedding_batched(list(qna_ids),list(qna_pairs))
         embeddings = np.vstack(list(self.text_embeddings.values()))
         embeddings = normalize(embeddings)
-        
+        self.pca = PCA(n_components=50)
+        embeddings = self.pca.fit_transform(embeddings)
         print("----Embeddings Created-----\n")
 
         # Perform top-level clustering
-        self.clustering = AgglomerativeClustering(distance_threshold=0.15, n_clusters=None, metric="cosine", linkage="average")
+        self.clustering = AgglomerativeClustering(distance_threshold=0.7, n_clusters=None, metric="cosine", linkage="average")
         cluster_labels = self.clustering.fit_predict(embeddings)
-
+        print("----Clustering Done-----\n")
 
         for qna_id,embedding, label in zip(qna_ids,embeddings,cluster_labels):
             self.category_map[label].append((qna_id,embedding))
@@ -196,7 +198,7 @@ class Taxonomy:
             self.top_davies_bouldin = davies_bouldin_score(embeddings, cluster_labels)
         else:
             self.top_silhouette, self.top_davies_bouldin = None, None
-        
+        print("----Category Name Assigning-----\n")
         # Assign category names to labels
         for label in self.category_map.keys():
             category_name = self.generate_category_name(self.category_map[label]) if self.category_map[label] else f"Category {label}"
@@ -235,7 +237,7 @@ class Taxonomy:
                         self.label_to_category_name[label] = self.label_to_category_name[other_label]
                         
                         self.category_map[other_label].extend(embeddings)
-                        
+        print("----Category Name Assigning Done-----\n")                
                         
         print("----First Level Nodes Categorization Successful-----\n")
 
@@ -251,7 +253,7 @@ class Taxonomy:
                 continue   
             embeddings=[embedding for _, embedding in sub_embeddings]
             sub_qna_ids=[qid for qid,_ in sub_embeddings]
-            sub_clustering = AgglomerativeClustering(distance_threshold=0.1, n_clusters=None, metric="cosine", linkage="average")
+            sub_clustering = AgglomerativeClustering(distance_threshold=0.5, n_clusters=None, metric="cosine", linkage="average")
             sub_cluster_labels = sub_clustering.fit_predict(embeddings)
 
             unique_sub_clusters = len(set(sub_cluster_labels))
@@ -297,7 +299,7 @@ class Taxonomy:
                     # Add sub-category name only if it's not already in the list
                     if sub_category_name not in self.taxonomy_dict[category_name]:
                         self.taxonomy_dict[category_name].append(sub_category_name)
-
+        print(self.evaluate_taxonomy())
         return self.taxonomy_dict 
 
 
@@ -341,8 +343,9 @@ class Taxonomy:
                 self.new_qna_count = 0 
             #Embed the new QnA pair
             self.qna_pairs[new_q_id]=new_text
-            new_embedding_un = self.get_bert_embedding(new_text)
-            new_embedding = normalize(new_embedding_un.reshape(1, -1))
+            new_embedding_un = normalize(self.get_bert_embedding(new_text))
+            new_embedding_un= self.pca.transform(new_embedding_un)
+            new_embedding = new_embedding_un.reshape(1, -1)
 
             # Find the best matching category
             category_similarities = {}

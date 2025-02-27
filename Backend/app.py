@@ -31,7 +31,6 @@ def createTaxonomy():
 @app.route('/api/getTaxonomy')
 def get_taxonomy():
     print("API Hit \n")
-    print(taxonomy.taxonomy_dict)
     return jsonify({"Data":taxonomy.taxonomy_dict})
 
 @app.route('/api/predictCategory',methods=["POST"])
