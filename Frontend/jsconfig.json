@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "jsx": "preserve",
+    "moduleResolution": "nodenext",
+    "checkJs": true
+  },
+  "exclude": ["node_modules", "**/node_modules/*"]
+}
