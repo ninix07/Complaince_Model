@@ -158,7 +158,7 @@ class Taxonomy:
 
         return max(category_similarities, key=category_similarities.get) 
 
-    def create_taxonomy(self,f):
+    def create_taxonomy(self,f=None):
         """
         Creates a taxonomy based on clustering methods. Firstly, embeddings are generated and a top-level clustering is formed. 
         Then, each cluster is divided into further sub-clusters. Each cluster is assigned a category name and sub-category name.

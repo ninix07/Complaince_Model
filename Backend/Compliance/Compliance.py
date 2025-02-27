@@ -15,7 +15,7 @@ TOGETHER_AI_KEY = os.getenv("TOGETHER_AI_KEY")
 
 class Complaince_RAG:
 
-    def __init__(self,db):
+    def __init__(self,db=None):
         self.db=db
         self.Index_NAME= "compliance-embeddings" #index name for pinecone db
         self.pc= Pinecone(api_key= PINECONE_API_KEY)
