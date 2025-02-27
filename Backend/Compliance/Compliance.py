@@ -159,8 +159,3 @@ if __name__ =="__main__":
         pdf= "./Backend/Compliance/Policy/"+pdf
         cr.store_chunks_in_pinecone(pdf, label)
     print("Succesfully Created chunk \n")
-    qna_pair = "How frequently should we conduct security risk assessments?"
-    classification = cr.classify_with_rag(qna_pair)
-    # Output result
-    print(f"QnA: {qna_pair}")
-    print(f"Compliance Standard: {classification}")
