@@ -65,6 +65,8 @@ def get_Complaince():
 def count_Compliance():
     required_compliances = {"HIPAA", "ISO 27001", "GDPR"}
     count = complaince.count_each_compliance()
+    if not count:
+        return jsonify({"error": "No complaince map data in the database"}), 400
     existing_compliances = {entry["compliance"] for entry in count}
     for compliance in required_compliances:
         if compliance not in existing_compliances:

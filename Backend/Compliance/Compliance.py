@@ -83,7 +83,7 @@ class Complaince_RAG:
         retrieved_chunks = [(match["metadata"]["text"], match["metadata"]["compliance"]) for match in results["matches"]]
         return retrieved_chunks
 
-    def classify_with_rag(self,q_id,qna_pair, top_k=3):
+    def classify_with_rag(self,q_id,qna_pair, top_k=10):
         """Uses retrieved compliance chunks in a RAG pipeline to classify QnA."""
         top_chunks = self._retrieve_top_k(qna_pair, k=top_k)
         print("Succesfully Fetched chunk \n")

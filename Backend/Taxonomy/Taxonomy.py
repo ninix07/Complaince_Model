@@ -7,8 +7,6 @@ from collections import defaultdict
 import pandas as pd
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 import torch
-from flask import jsonify
-
 class Taxonomy:
     def __init__(self, db, file_path="./Backend/Taxonomy/data.csv"):
         self.db=db
@@ -45,7 +43,6 @@ class Taxonomy:
         self.new_qna_count =0 
         self.text_embeddings={}
         # Read dataset
-        
         self.silhouette_scores=[]
         self.davies_bouldin_scores=[]
         self.sub_silhouette_scores=[]
@@ -61,6 +58,7 @@ class Taxonomy:
         df = pd.read_csv(self.file_path)
         df["Combined Text"] = df["Question Text"].fillna("") + " " + df["Answer"].fillna("") + " " + df["Notes/Comment"].fillna("")
         qna_pairs = df.set_index("Original ID")["Combined Text"].to_dict()
+        
         return qna_pairs
     def _remove_all_db(self):
         try:
@@ -109,16 +107,16 @@ class Taxonomy:
     def generate_category_name(self, embedding):
         """Generates category name using the most frequent assigned category."""
         # categories = [self.assign_category(qna) for _, qna in qna_list[:2]]
-        first_embedding = embedding[0][1]
-        categories = self.assign_category(first_embedding.reshape(1, -1))
+        first_embedding = [e for _,e in embedding]
+        categories = self.assign_category(np.mean(first_embedding,axis=0).reshape(1, -1))
         # return Counter(categories).most_common(1)[0][0] 
         return categories
     
     def generate_sub_category_name(self, category_name, embedding):
         """Generates sub category name using the most frequent assigned sub category."""
         # categories = [self.assign_sub_category(category_name,qna) for _, qna in qna_list[0]]
-        first_embedding = embedding[0][1]
-        categories = self.assign_sub_category(category_name,first_embedding.reshape(1, -1).reshape(1, -1))
+        first_embedding = [e for _,e in embedding]
+        categories = self.assign_sub_category(category_name,np.mean(first_embedding,axis=0).reshape(1, -1))
         # return Counter(categories).most_common(1)[0][0] 
         return categories
 
@@ -128,7 +126,7 @@ class Taxonomy:
         outputs = self.model(**inputs)
         return outputs.last_hidden_state[:, 0, :].detach().numpy()
     
-    def get_bert_embedding_batched(self, texts, batch_size=128):
+    def get_bert_embedding_batched(self,q_na_ids, texts, batch_size=128):
             """Converts multiple texts into BERT embeddings in batches."""
             all_embeddings = {}
             for i in range(0, len(texts), batch_size):
@@ -137,8 +135,8 @@ class Taxonomy:
                 with torch.no_grad():  
                     outputs = self.model(**inputs)
                 embeddings = outputs.last_hidden_state[:, 0, :].detach().numpy()
-                for j,text in enumerate(batch):
-                        all_embeddings[text]=embeddings[j]
+                for j,qna_id in enumerate(q_na_ids[i:i+batch_size]):
+                        all_embeddings[qna_id]=embeddings[j]
             return all_embeddings
     
     def assign_category(self, text_embedding):
@@ -176,10 +174,10 @@ class Taxonomy:
         
         qna_ids, qna_pairs = zip(*self.qna_pairs.items()) 
         if not self.text_embeddings:
-            self.text_embeddings = self.get_bert_embedding_batched(list(qna_pairs))
+            self.text_embeddings = self.get_bert_embedding_batched(list(qna_ids),list(qna_pairs))
         embeddings = np.vstack(list(self.text_embeddings.values()))
         embeddings = normalize(embeddings)
-
+        
         print("----Embeddings Created-----\n")
 
         # Perform top-level clustering
@@ -205,19 +203,22 @@ class Taxonomy:
             self.label_to_category_name[label] = category_name
 
         for label,  embeddings in self.category_map.items():
+                
                 if len(embeddings) < 2:
+                  
                   best_similarity = 0.0
                   best_label = None
+                  curr_embeddings= [embedding for _, embedding in embeddings]
                   for other_label, other_embeddings in self.category_map.items():
                     if len(other_embeddings) >1:
-                        if other_label == label or self.label_to_category_name[label] ==self.label_to_category_name[other_label]:
+                        if other_label == label :
                             continue
                           
-                            
+                        other_embedding= [embedding for _, embedding in other_embeddings]
                         # Compute similarity between the single-QnA and the first QnA in the other cluster
                         similarity = cosine_similarity(
-                            embeddings[0][1].reshape(1, -1),
-                            other_embeddings[0][1].reshape(1, -1)
+                            np.mean(curr_embeddings,axis=0).reshape(1, -1),
+                            np.mean(other_embedding,axis=0).reshape(1, -1)
                         ).flatten()[0]
 
                         if similarity > best_similarity:  # Keep track of the best match
@@ -225,12 +226,16 @@ class Taxonomy:
                             best_label = other_label
                         elif similarity > 0.6:
                           self.label_to_category_name[label] = self.label_to_category_name[other_label]
+                          self.category_map[other_label].extend(embeddings)
                           best_label=None
                           break
 
                     # Merge into the best cluster if similarity is high enough
                   if best_label :
                         self.label_to_category_name[label] = self.label_to_category_name[other_label]
+                        
+                        self.category_map[other_label].extend(embeddings)
+                        
                         
         print("----First Level Nodes Categorization Successful-----\n")
 
@@ -273,7 +278,9 @@ class Taxonomy:
 
             for sub_label, sub_embeddings in sub_label_to_qnas.items():
                 sub_category_name=self.sub_label_to_sub_category[label][sub_label] 
+                
                 for q_id , _ in sub_embeddings:
+                    
                     self._create_qna_sub_category_db( sub_category_name, q_id)
         print("----Subcategory Assignment Successful-----\n")
         # Construct the final taxonomy dictionary
@@ -340,7 +347,8 @@ class Taxonomy:
             # Find the best matching category
             category_similarities = {}
             for label, embedding in self.category_map.items():
-                avg_similarity = cosine_similarity(new_embedding, embedding[0][1].reshape(1,-1))
+                first_embedding = [e for _,e in embedding]
+                avg_similarity = cosine_similarity(new_embedding, np.mean(first_embedding,axis=0).reshape(1,-1))
                 category_similarities[label] = avg_similarity
             if not category_similarities:
                 return "Uncategorized", "Uncategorized"
@@ -360,7 +368,8 @@ class Taxonomy:
             if best_category_label in self.sub_nodes_map:
                 sub_category_similarities = {}
                 for sub_category_label, sub_embedding in self.sub_nodes_map[best_category_label].items():
-                    avg_similarity = cosine_similarity(new_embedding, sub_embedding[0][1].reshape(1,-1))
+                    sub= [e for _,e in sub_embedding]
+                    avg_similarity = cosine_similarity(new_embedding, np.mean(sub,axis=0).reshape(1,-1))
                     sub_category_similarities[sub_category_label] = avg_similarity
                
                 best_sub_category_label = max(sub_category_similarities, key=sub_category_similarities.get)
