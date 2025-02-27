@@ -59,14 +59,14 @@ const ComplianceCharts = () => {
     chart: { type: "bar" },
     toolbar: {
       style: {
-        background: "#1E1E1E", // Dark background for the toolbar menu
+        background: "#1E1E1E",
       },
     },
     tooltip: {
-      theme: "dark", // Ensures dark background for the tooltip
+      theme: "dark",
       style: {
-        background: "#1E1E1E", // Custom dark background (optional)
-        color: "#FFFFFF", // White text for readability
+        background: "#1E1E1E",
+        color: "#FFFFFF",
       },
     },
 
@@ -74,7 +74,7 @@ const ComplianceCharts = () => {
       categories,
       labels: {
         style: {
-          colors: "#FFFFFF", // Sets X-axis labels (below bars) to white
+          colors: "#FFFFFF",
         },
       },
     },
@@ -83,7 +83,7 @@ const ComplianceCharts = () => {
     },
     legend: {
       labels: {
-        colors: "#FFFFFF", // White legend text
+        colors: "#FFFFFF",
       },
     },
     colors,
@@ -92,7 +92,7 @@ const ComplianceCharts = () => {
       style: {
         fontSize: "14px",
         fontWeight: "bold",
-        colors: ["#FFFFFF"], // White data label text
+        colors: ["#FFFFFF"],
       },
     },
   };
@@ -102,19 +102,19 @@ const ComplianceCharts = () => {
     colors,
     legend: {
       labels: {
-        colors: "#FFFFFF", // White legend text
+        colors: "#FFFFFF",
       },
     },
     toolbar: {
       style: {
-        background: "#1E1E1E", // Dark background for the toolbar menu
+        background: "#1E1E1E",
       },
     },
     tooltip: {
-      theme: "dark", // Ensures dark background for the tooltip
+      theme: "dark",
       style: {
-        background: "#1E1E1E", // Custom dark background (optional)
-        color: "#FFFFFF", // White text for readability
+        background: "#1E1E1E",
+        color: "#FFFFFF",
       },
     },
     dataLabels: {
@@ -122,7 +122,7 @@ const ComplianceCharts = () => {
       style: {
         fontSize: "14px",
         fontWeight: "bold",
-        colors: ["#FFFFFF"], // White data label text
+        colors: ["#FFFFFF"],
       },
     },
   };

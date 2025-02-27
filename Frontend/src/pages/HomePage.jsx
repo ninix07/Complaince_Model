@@ -88,7 +88,7 @@ const HomePage = () => {
             drop
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            CSV File (MAX. 800x400px)
+            CSV File
           </p>
         </div>
         <input

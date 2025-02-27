@@ -9,6 +9,7 @@ try:
     db= ConnectNeo4j()
 except Exception as err:
     print(f"Database error: {err}")
+    exit()
 taxonomy= Taxonomy(db)
 complaince= Complaince_RAG(db)
 
