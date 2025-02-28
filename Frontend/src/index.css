@@ -75,15 +75,4 @@ button:focus-visible {
 .apexcharts-menu-item:hover {
   background: #333 !important; /* Darker hover effect */
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
-}
+

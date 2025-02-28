@@ -17,7 +17,7 @@ const Navbar = () => {
   const location = useLocation();
   return (
     <nav
-      className={`${styles.paddingX} w-full flex items-center py-5 fixed top-0 z-20 bg-background-light dark:bg-background-dark opacity-80`}
+      className={`${styles.paddingX} w-full flex items-center py-5 fixed top-0 z-20  dark:bg-background-dark opacity-80`}
     >
       <div className="w-full flex justify-between items-center max-w-7xl mx-auto">
         {/* Logo and Home Link */}
@@ -29,7 +29,7 @@ const Navbar = () => {
             setActive("");
           }}
         >
-          <p className="text-[18px] font-bold cursor-pointer text-text-light dark:text-text-dark">
+          <p className="text-[18px] font-bold cursor-pointer  dark:text-text-dark">
             Compliance Taxonomy
           </p>
         </a>
@@ -42,7 +42,7 @@ const Navbar = () => {
                   key={Links.id}
                   className={`${active === Links.title
                     ? "text-[#915eff]"
-                    : "text-text-light dark:text-text-dark"
+                    : "dark:text-text-dark"
                     } hover:text-[#915eff] text-[18px] font-medium cursor-pointer`}
                   onClick={() => setActive(Links.title)}
                 >

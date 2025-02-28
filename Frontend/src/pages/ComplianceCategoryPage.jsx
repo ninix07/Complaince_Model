@@ -70,14 +70,14 @@ const ComplianceCategoryPage = () => {
             type="text"
             value={id}
             onChange={(e) => { setId(e.target.value); setResponse(""); }}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 bg-black focus:border-blue-400"
             placeholder="Question Id"
           />
           <input
             type="text"
             value={text}
             onChange={(e) => { setText(e.target.value); setResponse(""); }}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 bg-black focus:border-blue-400"
             placeholder="Please Insert you Question"
           />
         </div>

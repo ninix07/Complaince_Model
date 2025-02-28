@@ -126,7 +126,14 @@ const ComplianceCharts = () => {
       },
     },
   };
+  if (!data) {
+    return (
+      <div className="flex justify-center items-center h-[70vh] text-2xl font-bold text-red-600">
+        Trouble Connecting to Backend.
+      </div>
 
+    );
+  }
   return (
     <div className="flex flex-col  items-center w-[80vw] min-h-screen p-6">
       <div className="flex flex-col items-center w-[100vw] space-y-6">
